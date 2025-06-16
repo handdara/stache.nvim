@@ -400,7 +400,7 @@ function M.buf_exec_curr_block(bufnr, atLine)
     local blkShft = 0
     atLine = atLine or vim.api.nvim_win_get_cursor(0)[1]
     for _, blk in ipairs(blks) do
-        if blk.range[1] - 1 <= atLine and atLine <= blk.range[2] + 1 then
+        if blk.range[1] - 1 <= atLine and atLine <= blk.range[2] + 2 then
             local res = run_block(blk.lines)
             blk.output = res
             vim.api.nvim_buf_set_lines(bufnr, blkShft + blk.outReplaceRange[1], blkShft + blk.outReplaceRange[2], false, res)
