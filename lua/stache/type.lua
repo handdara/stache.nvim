@@ -388,6 +388,48 @@ end
 --     print(line)
 -- end
 
+---@alias StacheID string
+---@alias StacheField string
+---@alias FilePath string
+
+---@class ItmDat
+---@field refresh fun(self:ItmDat)
+---@field render fun(self:ItmDat):string[]
+---@operator concat(ItmDat):ItmDat
+
+---@class FilterOp
+---@field filt string?
+---@field data string?
+---@field field string?
+---@field invert boolean?
+
+---@class SetOp
+---@field op string
+---@field fromDirs string[]
+---@field filter FilterOp
+
+---@class GroupOp
+---@field field StacheField
+---@field sort ('asc'|'des')?
+---@field split boolean
+
+---@alias Group {groups:[ string, Group ], opts:table?} | { items:ItmDat[] }
+
+---@class Query
+---@field setOps SetOp[]
+---@field grpOps GroupOp[]
+---@field dispOp string
+
+---@class StacheBlock
+---@field range [number, number]
+---@field lines string[]
+---@field output string[]
+---@field outReplaceRange [number, number]
+
+---@param itm ItmDat
+local function cacheItem(itm)
+    StacheCache[itm['id']] = itm
+end
 M.Set = Set
 M.Map = Map
 M.compose = compose

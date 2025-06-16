@@ -1,342 +1,18 @@
 local T = require 'stache.type'
 local P = require 'stache.parse'
+local C = require 'stache.config'
+local I = require 'stache.items'
+local ask = require 'stache.ask'
+
 local M = { options = { dirs = { data = vim.fs.normalize('~/Documents/stache') } } }
 
----@alias StacheID string
----@alias StacheField string
----@alias FilePath string
-
----@class ItmDat
----@field refresh fun(self:ItmDat)
----@field render fun(self:ItmDat):string[]
----@operator concat(ItmDat):ItmDat
-
----@class FilterOp
----@field filt string?
----@field data string?
----@field field string?
----@field invert boolean?
-
----@class SetOp
----@field op string
----@field fromDirs string[]
----@field filter FilterOp
-
----@class GroupOp
----@field field StacheField
----@field sort ('asc'|'des')?
----@field split boolean
-
----@alias Group {groups:[ string, Group ], opts:table?} | { items:ItmDat[] }
-
----@class Query
----@field setOps SetOp[]
----@field grpOps GroupOp[]
----@field dispOp string
-
----@class StacheBlock
----@field range [number, number]
----@field lines string[]
----@field output string[]
----@field outReplaceRange [number, number]
-
----@param itm ItmDat
-local function cacheItem(itm)
-    StacheCache[itm['id']] = itm
-end
-
-M.areas = {
-    'seal',
-    'thesis',
-    'community',
-    'learning',
-    'hobbies',
-    'fitness',
-    'community',
-    'life',
-}
-
-M.categories = {
-    'electronics',
-    'appliances',
-    'furniture',
-    'clothing',
-    'books',
-    'media',
-    'tools',
-    'outdoor',
-    'vehicles',
-    'art',
-    'fitness',
-    'instruments',
-    'fun',
-    'diy',
-    'office',
-    'health',
-    'cooking',
-    'organization',
-}
-
-M.contexts = {
-    'laptop',
-    'ccrf',
-    'home',
-    'notebook',
-    'cell',
-}
-
-M.itemTypes = {
-    'task',
-    'data',
-    'contact',
-    'inventory',
-}
-
-M.statuses = {
-    'backburner',
-    'open', -- "clarify"
-    'ready',
-    'to-discuss',
-    'blocked', -- "waiting"
-    'scheduled',
-    'in-progress',
-    'delayed',
-    'archived',
-    'closed',
-}
-
-M.tags = {
-    data = { 'heartrate' },
-}
-
-M.units = {
-    temp = { 'farenheit', 'celcius', },
-    freq = { 'bpm', 'Hz' },
-    velocity = { 'mph', 'mps', 'kph', },
-    duration = { 'seconds', 'hours', 'days', 'weeks', 'months', 'years', },
-    misc = { 'count', '4-scale' },
-}
-
-M.favUnits = {
-    M.units.temp[1],
-    M.units.freq[1],
-    M.units.velocity[1],
-    M.units.velocity[2],
-    M.units.duration[1],
-    M.units.duration[2],
-    M.units.duration[3],
-    M.units.duration[6],
-    M.units.misc[1],
-    M.units.misc[2],
-}
-
-M.priorities = {
-    '1',
-    '2',
-    '3',
-    '4',
-}
-
-M.types = {
-    date = {
-        'birthday',
-        'anniversary',
-    },
-    phone = {
-        'cell',
-        'home',
-        'office',
-        'work',
-    },
-    email = {
-        'personal',
-        'work',
-    },
-    address = {
-        'personal',
-        'office',
-    },
-}
-
-local function ask_cr(cmd)
-    local res = {}
-    local function collect(_, data, name)
-        res[name] = data
-    end
-    local j = vim.fn.jobstart(cmd, {
-        on_stdout = collect,
-        on_stderr = collect,
-        stdout_buffered = true,
-        stderr_buffered = true,
-    })
-    vim.fn.jobwait({ j })
-    coroutine.yield(res)
-end
-
-local function grab_field(field, file, tbl)
-    assert(type(file) == 'string' and string.len(file) > 0,
-        'grab_field: invalid arg: file: ' .. vim.inspect(file)
-        .. '\n\targ: tbl: ' .. vim.inspect(tbl or 'tbl not passed')
-    )
-    local command = { 'rg', "-NIor=$1", '^' .. field .. ': *(.*)(\t| )*', file }
-    local co = coroutine.create(ask_cr)
-    local _, ans = coroutine.resume(co, command)
-    assert(coroutine.resume(co))
-    assert(ans.stderr[1] == "", "rg errored:\n\tans:\n" .. vim.inspect(ans) ..
-        "\n\tcommand: " .. vim.inspect(command) ..
-        "\n\tfile: " .. vim.inspect(file)
-    )
-    return ans.stdout[1]
-end
-
-local meta_itmdat = {
-    __is_stache_item = true,
-    __index = function(tbl, key)
-        local fld = grab_field(key, tbl.path, tbl)
-        if fld == '~' then
-            fld = 'null'
-        end
-        tbl[key] = fld
-        return fld
-    end,
-    __eq = function(t1, t2)
-        return t1.id == t2.id
-    end,
-    __concat = function(t1, t2)
-        assert(t1 == t2)
-        for k, v in pairs(t2) do
-            t1[k] = v
-        end
-        return t1
-    end,
-}
-
----@param filepath FilePath
----@return ItmDat
-function M.mk_itm_dat(filepath)
-    assert(type(filepath) == "string" and string.len(filepath) > 0,
-        'mk_itm_dat: invalid arg: filepath: ' .. vim.inspect(filepath)
-    )
-    local fid = vim.fs.basename(filepath)
-    local cacheQuery = StacheCache[fid]
-    if cacheQuery then
-        return cacheQuery
-    end
-
-    local itmdat = {
-        path = vim.fs.normalize(filepath),
-    }
-    function itmdat:refresh()
-        local path_ = self.path
-        for k, _ in pairs(self) do
-            self[k] = nil
-        end
-        self.path = path_
-        setmetatable(self, meta_itmdat)
-        assert(self.id == vim.fs.basename(self.path))
-    end
-
-    function itmdat:render()
-        if self.stache == 'task' then
-            local due_str
-            if self.due == 'null' then
-                due_str = ''
-            else
-                due_str = '<' .. self.due .. '> '
-            end
-            return {
-                str = (
-                    '-   (' ..
-                    self.id ..
-                    ") " ..
-                    due_str .. '-' ..
-                    self.priority .. '- ' ..
-                    self.description
-                ),
-                fields = self,
-            }
-        elseif self.stache == 'contact' then
-            return {
-                str = (self.id .. ': ' .. self.description),
-                fields = self,
-            }
-        else
-            error('not impl')
-        end
-    end
-
-    setmetatable(itmdat, meta_itmdat)
-    assert(itmdat.id == vim.fs.basename(filepath),
-        'assertion failed, id/filepath basename mismatch:\n\t'
-        .. vim.inspect(itmdat.id) .. ' /= ' .. vim.inspect(vim.fs.basename(filepath)) .. '\n' ..
-        '!!! failing file: ' .. filepath
-    )
-    cacheItem(itmdat)
-    return itmdat
-end
-
-function M.mk_itm_set(filepaths)
-    filepaths = filepaths or {}
-    local itmset = T.Set:new()
-
-    for _, fp in ipairs(filepaths) do
-        if string.len(fp) > 0 then
-            local new_itm = M.mk_itm_dat(fp)
-            itmset:insert(new_itm['id'])
-        end
-    end
-    return itmset
-end
-
-local function ask_rg(args)
-    local command = { "rg" }
-    for _, arg in ipairs(args) do
-        table.insert(command, arg)
-    end
-    local co = coroutine.create(ask_cr)
-    local _, ans = coroutine.resume(co, command)
-    assert(coroutine.resume(co))
-    return ans
-end
+C.extend_defaults(M)
 
 local function run_stache(data, dir)
     dir = dir or M.options.dirs.data
     assert(string.len(data) >= 1)
     local pattern = [[^stache: *]] .. data
-    return ask_rg { '-l', pattern, dir }
-end
-
----@param query table
----@return Set<StacheID>
-local function run_query(query)
-    assert(query.type and query.data, "failed assertion: query = " .. vim.inspect(query))
-    local run = {
-        rg = function(data)
-            assert(#data >= 1) -- args for ripgrep
-            return ask_rg(data)
-        end,
-        stache = run_stache,
-        task = function(data)
-            ---@type Set
-            local tmp = run_query({ type = 'stache', data = 'task' })
-            tmp = tmp:filter(function(itm_id)
-                local itm = StacheCache[itm_id]
-                    or M.mk_itm_dat(itm_id)
-                return itm[data[1]] == data[2]
-            end)
-            local res = {
-                stdout = tmp:foldl({}, function(acc, itm_id)
-                    table.insert(acc, itm_id)
-                    return acc
-                end),
-                stderr = { '' },
-            }
-            return res
-        end,
-    }
-    local res = run[query.type](query.data)
-    local res_set = M.mk_itm_set(res.stdout)
-    return res_set
+    return ask.ask_rg { '-l', pattern, dir }
 end
 
 ---@param ops SetOp[]
@@ -345,7 +21,7 @@ local function do_query_set_ops(ops)
     if #ops == 0 or #ops[1].fromDirs == 0 then
         return T.None()
     else
-        local currset = M.mk_itm_set()
+        local currset = I.mk_itm_set()
         for _, op in ipairs(ops) do
             local nextset
             if #op.fromDirs == 0 then
@@ -357,7 +33,7 @@ local function do_query_set_ops(ops)
                     rgFlags = '--files-with-matches'
                 end
                 local cmd = currset:foldl({ rgFlags }, function(acc, id)
-                    local itm = M.mk_itm_dat(id)
+                    local itm = I.mk_itm_dat(id)
                     table.insert(acc, itm['path'])
                     return acc
                 end)
@@ -365,20 +41,20 @@ local function do_query_set_ops(ops)
                 if op.filter.filt == 'stache' then
                     local pattern = [[^stache: *]] .. op.filter.data
                     table.insert(cmd, 2, pattern)
-                    local askRes = ask_rg(cmd)
+                    local askRes = ask.ask_rg(cmd)
                     assert(askRes.stderr[1] == "", 'std err: ' .. vim.inspect(askRes.stderr))
-                    nextset = M.mk_itm_set(askRes.stdout)
+                    nextset = I.mk_itm_set(askRes.stdout)
                 elseif op.filter.filt == 'grep' then
                     table.insert(cmd, 2, op.filter.data)
-                    local askRes = ask_rg(cmd)
+                    local askRes = ask.ask_rg(cmd)
                     assert(askRes.stderr[1] == "", 'ask_rg result: ' .. vim.inspect(askRes))
-                    nextset = M.mk_itm_set(askRes.stdout)
+                    nextset = I.mk_itm_set(askRes.stdout)
                 elseif op.filter.filt == 'field' then
                     cmd[1] = '--files-with-matches'
                     table.insert(cmd, 2, '')
-                    local askRes = ask_rg(cmd)
+                    local askRes = ask.ask_rg(cmd)
                     assert(askRes.stderr[1] == "")
-                    nextset = M.mk_itm_set(askRes.stdout):filter(function(sid)
+                    nextset = I.mk_itm_set(askRes.stdout):filter(function(sid)
                         local matched = string.match(StacheCache[sid][op.filter.field], op.filter.data)
                         if op.filter.invert then
                             return not matched
@@ -397,21 +73,21 @@ local function do_query_set_ops(ops)
                     rgFlags = '--files-with-matches'
                 end
                 -- searching through file system
-                nextset = M.mk_itm_set()
+                nextset = I.mk_itm_set()
                 for _, dir in ipairs(op.fromDirs) do
                     if op.filter.filt == 'stache' then
                         local pattern = [[^stache: *]] .. op.filter.data
-                        local askRes = ask_rg { rgFlags, pattern, dir }
+                        local askRes = ask.ask_rg { rgFlags, pattern, dir }
                         assert(askRes.stderr[1] == "", 'askRes = ' .. vim.inspect(askRes))
-                        nextset = nextset + M.mk_itm_set(askRes.stdout)
+                        nextset = nextset + I.mk_itm_set(askRes.stdout)
                     elseif op.filter.filt == 'grep' then
-                        local askRes = ask_rg { rgFlags, op.filter.data, dir }
+                        local askRes = ask.ask_rg { rgFlags, op.filter.data, dir }
                         assert(askRes.stderr[1] == "", 'stderr: ' .. vim.inspect(askRes.stderr))
                         nextset = nextset + M.mk_itm_set(askRes.stdout)
                     elseif op.filter.filt == 'field' then
-                        local askRes = ask_rg { '-l', '', dir } -- leave this as just the -l arg because inversion happens later
+                        local askRes = ask.ask_rg { '-l', '', dir } -- leave this as just the -l arg because inversion happens later
                         assert(askRes.stderr[1] == "")
-                        nextset = nextset + M.mk_itm_set(askRes.stdout):filter(function(sid)
+                        nextset = nextset + I.mk_itm_set(askRes.stdout):filter(function(sid)
                             local matched = string.match(StacheCache[sid][op.filter.field], op.filter.data)
                             if op.filter.invert then
                                 return not matched
@@ -568,7 +244,7 @@ local function process_query(query)
         ---@type Group
         local rootGrp = {
             items = x:foldl({}, function(acc, y)
-                table.insert(acc, M.mk_itm_dat(y))
+                table.insert(acc, I.mk_itm_dat(y))
                 return acc
             end)
         }
@@ -608,12 +284,6 @@ local function process_query(query)
     end, function()
         return { 'Failed parse: either no set operations were specified or the first set operation has no FROM expr' }
     end)
-end
-
-function M.ask(query)
-    assert(type(query) == "table")
-    local itm_set = run_query(query)
-    return itm_set
 end
 
 function M.quick_get_names(stache_type, searchDir)
@@ -912,7 +582,7 @@ end
 --             local els = res._val._elements
 --             for name, inSet in pairs(els) do
 --                 if inSet then
---                     local el = M.mk_itm_dat(name)
+--                     local el = I.mk_itm_dat(name)
 --                     ---@diagnostic disable-next-line: undefined-field
 --                     assert(el.stache == stacheTypeToSearch)
 --                 end
@@ -953,9 +623,9 @@ end
 --         local resAll = resAll_._val
 --         local resStr = 'res = ' .. vim.inspect(res)
 --         ---@type Set
---         local intersection = (M.mk_itm_set() + res._val) * resInv._val
+--         local intersection = (I.mk_itm_set() + res._val) * resInv._val
 --         ---@type Set
---         local union = (M.mk_itm_set() + res._val) + resInv._val
+--         local union = (I.mk_itm_set() + res._val) + resInv._val
 --         assert(res._val._elements, resStr)
 --         assert(intersection:empty())
 --         resAll:map(function(x)
