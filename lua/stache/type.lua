@@ -239,11 +239,6 @@ end
 ---@alias StacheField string
 ---@alias FilePath string
 
----@class ItmDat
----@field refresh fun(self:ItmDat)
----@field render fun(self:ItmDat):string[]
----@operator concat(ItmDat):ItmDat
-
 ---@class FilterOp
 ---@field filt string?
 ---@field data string?

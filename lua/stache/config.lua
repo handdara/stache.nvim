@@ -123,5 +123,19 @@ return {
             group = stache_enter,
             pattern = M.options.dirs.data .. '/*',
         })
+        local stache_itmSaved = vim.api.nvim_create_augroup('StacheItmSaved', { clear = true })
+        vim.api.nvim_create_autocmd({ 'BufWritePost' }, {
+            callback = function()
+                local sid = vim.fs.basename(vim.api.nvim_buf_get_name(0))
+                if StacheCache then
+                    local itm = StacheCache[sid] ---@type ItmDat
+                    if itm then
+                        itm:refresh()
+                    end
+                end
+            end,
+            group = stache_itmSaved,
+            pattern = M.options.dirs.data .. '/*',
+        })
     end
 }
