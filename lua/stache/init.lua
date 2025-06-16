@@ -146,7 +146,7 @@ local function sort_grp(field, tups, invert)
         end
     end
     local comparison_funcs = { -- is (lhs < rhs) true?
-        id = nil,
+        id = comp_1(function(l, r) return l < r end),
         due = comp_1(compare_dates),
         created = comp_1(compare_dates),
         modified = comp_1(compare_dates),
@@ -170,6 +170,7 @@ local function sort_grp(field, tups, invert)
             return lnum < rnum
         end),
     }
+    assert(comparison_funcs[field], 'unsuported sort field!')
     table.sort(tups, comparison_funcs[field])
     if invert then
         local tupsInv = {}
@@ -393,13 +394,13 @@ function M.buf_exec_all_blocks(bufnr)
     return blks
 end
 
-function M.buf_exec_curr_block(bufnr)
+function M.buf_exec_curr_block(bufnr, atLine)
     bufnr = bufnr or 0
     local blks = buf_get_blocks(bufnr)
     local blkShft = 0
-    local currLine = vim.api.nvim_win_get_cursor(0)[1]
+    atLine = atLine or vim.api.nvim_win_get_cursor(0)[1]
     for _, blk in ipairs(blks) do
-        if blk.range[1] - 1 <= currLine and currLine <= blk.range[2] + 1 then
+        if blk.range[1] - 1 <= atLine and atLine <= blk.range[2] + 1 then
             local res = run_block(blk.lines)
             blk.output = res
             vim.api.nvim_buf_set_lines(bufnr, blkShft + blk.outReplaceRange[1], blkShft + blk.outReplaceRange[2], false, res)
