@@ -2,6 +2,10 @@
 local M = {}
 local T = require 'stache.type'
 
+local wrap1 = T.wrap1
+local wrapmap = T.wrapmap
+local compose = T.compose
+
 ---@generic A
 ---@alias PRes Option<{rem:string, val:A}>
 
@@ -184,14 +188,13 @@ end))
     ^ (pYear - M.pstr('-') .. pMo - M.pstr('-') .. pDay):fmap(compose(wrap1, function(x)
     return {yr = x[1], mo = x[2], da = x[3]}
 end))
-local pNullOrDate = (M.pstr('null') + M.ppure({yr = 9999, mo = 12, da = 31})) ^ pDate
 local pPath = M.pmatch('^[%w%-%_%/]+()')
 local pSetOpKW = mkSetOpP('UNION') ^ mkSetOpP('SUBTRACT') ^ mkSetOpP('INTERSECT')
 local pWhChar = M.pstr(' ') ^ M.pstr('\t')
 local pWhite = M.prep(pWhChar)
 local pNewLine = M.pstr('\n')
 local pWhSep = pWhChar + pWhite
-local pHome = M.pstr('-') + M.ppure('~/code/')--M.ppure(M.dirs.data)
+local pHome = M.pstr('-')
 local pDir = pHome ^ pPath ^ (M.pstr('`') + pPath - M.pstr('`'))
 local pFrom = M.pstr('FROM') + pWhSep + pDir
 local pFroms = M.prep(pWhSep + pFrom):fmap(wrap1)
@@ -247,122 +250,7 @@ local pBlk = (
     return { setOps = x[1], grpOps = x[2], dispOp = x[3] }
 end)
 
--- local htest = require 'handdara.util.test' 
--- local function dbg(x, arg)
---     if type(arg) == "table" then
---         return x
---     end
---     arg = arg or ''
---     test_notifier:addline(arg .. vim.inspect(x))
---     return x
--- end
--- local test_notifier = htest.mkNotifier()
--- local td = { s = 'test string', t = 'other string' }
--- local tests = {
---     test_pstr_fail = function()
---         local x = 'rest'
---         ---@type Parser
---         local p = M.pstr(x)
---         return T.matchOption(p.runParser(td.s), function(_) return false end, function() return true end)
---     end,
---     test_pstr_success = function()
---         local x = 'test'
---         ---@type Parser
---         local p = M.pstr(x)
---         return T.matchOption(dbg(p.runParser(td.s), { 'parse result' }),
---             function(val)
---                 if val[1] == ' string' and val[2][1] == 'test' then
---                     return true
---                 end
---                 return false
---             end,
---             function() return false end)
---     end,
---     test_pstr_combine = function()
---         ---@type Parser
---         local q = M.pstr('test')
---         local r = M.pstr('other')
---         local p = q ^ r
---         return T.matchOption(p.runParser(td.s),
---                 function(val)
---                     if val[1] == ' string' and val[2][1] == 'test' then
---                         return true
---                     end
---                     return false
---                 end, function() return false end)
---             and T.matchOption(p.runParser(td.t),
---                 function(val)
---                     if val[1] == ' string' and val[2][1] == 'other' then
---                         return true
---                     end
---                     return false
---                 end, function() return false end)
---             and T.matchOption(p.runParser('this shoudlnt match'),
---                 function(_) return false end, function() return true end)
---     end,
---     test_pstr_take_right = function()
---         local p = M.pstr('test')
---         local q = p + M.ppure(4)
---         return T.matchOption(q.runParser(td.s), function(val)
---             if val[2][1] == 4 then
---                 return true
---             end
---             return false
---         end, function() return false end)
---     end,
---     test_pstr_take_left = function()
---         local p = M.pstr('test ') + M.ppure(4)
---         local q = M.pstr('string')
---         local r = p - q
---         return T.matchOption(r.runParser(td.s),
---             function(res)
---                 if dbg(res, {})[2][1] == 4 then
---                     return true
---                 end
---                 return false
---             end,
---             function() return false end)
---     end,
---     test_pstr_concat = function()
---         local p = M.pstr('test ') + M.ppure(1)
---         local q = M.pstr('string') + M.ppure(2)
---         local r = p .. q
---         return T.matchOption(r.runParser(td.s),
---             function(res)
---                 if res[2][1] == 1 and res[2][2] then
---                     return true
---                 end
---                 return false
---             end,
---             function() return false end)
---     end,
---     test_prep = function()
---         local p = M.pstr('test') .. M.pstr(' ')
---         return T.matchOption(p.runParser(td.s),
---             function(res) return (res[1] == 'string' and res[2][1] == 'test' and res[2][2] == ' ') end,
---             function() return false end)
---     end,
---     test_match = function()
---         local p = M.pmatch('^[%w%-%_%/]+()')
---         local x = 'this_is-a/path'
---         local y = ' and the rest isnt'
---         local pathString = x .. y
---         return T.matchOption(p.runParser(pathString),
---             function(res) return (res[1] == y and res[2][1] == x) end,
---             function() return false end)
---     end,
---     test_fmap = function()
---         local p = M.pstr('test') + M.ppure(1)
---         local q = p:fmap(function(x) return {x[1] + 1} end)
---         return T.matchOption(q.runParser(td.s),
---             function(res)
---                 return (res[1] == ' string' and res[2][1] == 2)
---             end,
---             function() return false end)
---     end
--- }
--- ---@diagnostic disable-next-line: unused-local
--- htest.runtests(tests, function(msg) test_notifier:addline(msg) end)
--- test_notifier:notify()
+M.pBlock = pBlk
+M.pDate = pDate
 
 return M
