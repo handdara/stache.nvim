@@ -18,6 +18,11 @@ local function grab_field(field, file, tbl)
     return ans.stdout[1]
 end
 
+---@class ItmDat
+---@field refresh fun(self:ItmDat)
+---@field render fun(self:ItmDat):string[]
+---@operator concat(ItmDat):ItmDat
+
 local meta_itmdat = {
     __is_stache_item = true,
     __index = function(tbl, key)
@@ -62,10 +67,14 @@ function M.mk_itm_dat(filepath)
     }
     function itmdat:refresh()
         local path_ = self.path
+        local refresh_ = self.refresh
+        local render_ = self.render
         for k, _ in pairs(self) do
             self[k] = nil
         end
         self.path = path_
+        self.refresh = refresh_
+        self.render = render_
         setmetatable(self, meta_itmdat)
         assert(self.id == vim.fs.basename(self.path))
     end
