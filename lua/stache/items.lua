@@ -104,7 +104,10 @@ function M.mk_itm_dat(filepath)
                 fields = self,
             }
         else
-            error('not impl')
+            return {
+                str = '-   (' .. self.id .. ') ' .. self.description,
+                fields = self,
+            }
         end
     end
 
