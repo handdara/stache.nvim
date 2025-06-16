@@ -390,4 +390,5 @@ end
 
 M.Set = Set
 M.Map = Map
+M.compose = compose
 return M

@@ -2,6 +2,10 @@
 local M = {}
 local T = require 'stache.type'
 
+local wrap1 = T.wrap1
+local wrapmap = T.wrapmap
+local compose = T.compose
+
 ---@generic A
 ---@alias PRes Option<{rem:string, val:A}>
 
@@ -184,14 +188,13 @@ end))
     ^ (pYear - M.pstr('-') .. pMo - M.pstr('-') .. pDay):fmap(compose(wrap1, function(x)
     return {yr = x[1], mo = x[2], da = x[3]}
 end))
-local pNullOrDate = (M.pstr('null') + M.ppure({yr = 9999, mo = 12, da = 31})) ^ pDate
 local pPath = M.pmatch('^[%w%-%_%/]+()')
 local pSetOpKW = mkSetOpP('UNION') ^ mkSetOpP('SUBTRACT') ^ mkSetOpP('INTERSECT')
 local pWhChar = M.pstr(' ') ^ M.pstr('\t')
 local pWhite = M.prep(pWhChar)
 local pNewLine = M.pstr('\n')
 local pWhSep = pWhChar + pWhite
-local pHome = M.pstr('-') + M.ppure('~/code/')--M.ppure(M.dirs.data)
+local pHome = M.pstr('-')
 local pDir = pHome ^ pPath ^ (M.pstr('`') + pPath - M.pstr('`'))
 local pFrom = M.pstr('FROM') + pWhSep + pDir
 local pFroms = M.prep(pWhSep + pFrom):fmap(wrap1)
@@ -246,5 +249,8 @@ local pBlk = (
 ):fmap(function(x)
     return { setOps = x[1], grpOps = x[2], dispOp = x[3] }
 end)
+
+M.pBlock = pBlk
+M.pDate = pDate
 
 return M

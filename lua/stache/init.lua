@@ -1,7 +1,6 @@
-local hdirs = require('handdara.util.dirs')
 local T = require 'stache.type'
 local P = require 'stache.parse'
-local M = { dirs = {data = '/home/handdara/MEGA/ansible/5-stache/'}}
+local M = { options = { dirs = { data = vim.fs.normalize('~/Documents/stache') } } }
 
 ---@alias StacheID string
 ---@alias StacheField string
@@ -289,23 +288,22 @@ function M.mk_itm_set(filepaths)
     return itmset
 end
 
-local function ask_rg(args, searchDir)
-    searchDir = searchDir or M.dirs.data
+local function ask_rg(args)
     local command = { "rg" }
     for _, arg in ipairs(args) do
         table.insert(command, arg)
     end
-    table.insert(command, searchDir)
     local co = coroutine.create(ask_cr)
     local _, ans = coroutine.resume(co, command)
     assert(coroutine.resume(co))
     return ans
 end
 
-local function run_stache(data)
+local function run_stache(data, dir)
+    dir = dir or M.options.dirs.data
     assert(string.len(data) >= 1)
     local pattern = [[^stache: *]] .. data
-    return ask_rg { '-l', pattern }
+    return ask_rg { '-l', pattern, dir }
 end
 
 ---@param query table
@@ -323,7 +321,7 @@ local function run_query(query)
             local tmp = run_query({ type = 'stache', data = 'task' })
             tmp = tmp:filter(function(itm_id)
                 local itm = StacheCache[itm_id]
-                    or M.mk_itm_dat(hdirs.stache.abs .. '/' .. itm_id)
+                    or M.mk_itm_dat(itm_id)
                 return itm[data[1]] == data[2]
             end)
             local res = {
@@ -404,7 +402,7 @@ local function do_query_set_ops(ops)
                     if op.filter.filt == 'stache' then
                         local pattern = [[^stache: *]] .. op.filter.data
                         local askRes = ask_rg { rgFlags, pattern, dir }
-                        assert(askRes.stderr[1] == "")
+                        assert(askRes.stderr[1] == "", 'askRes = ' .. vim.inspect(askRes))
                         nextset = nextset + M.mk_itm_set(askRes.stdout)
                     elseif op.filter.filt == 'grep' then
                         local askRes = ask_rg { rgFlags, op.filter.data, dir }
@@ -439,6 +437,7 @@ local function do_query_set_ops(ops)
 end
 
 local function compare_dates(lhs, rhs)
+    local pNullOrDate = (M.pstr('null') + M.ppure({ yr = 9999, mo = 12, da = 31 })) ^ P.pDate
     return T.matchOption(pNullOrDate.runParser(lhs),
         function(lres)
             local l = lres[2][1]
@@ -472,7 +471,7 @@ local function sort_grp(field, tups, invert)
         created = comp_1(compare_dates),
         modified = comp_1(compare_dates),
         priority = comp_1(function(lhs, rhs)
-            local compTbl = {['null'] = 1, ['1'] = 1, ['2'] = 2, ['3'] = 3, ['4'] = 4}
+            local compTbl = { ['null'] = 1, ['1'] = 1, ['2'] = 2, ['3'] = 3, ['4'] = 4 }
             local l = compTbl[lhs]
             local r = compTbl[rhs]
             -- print(l .. '<' .. r .. '=' .. tostring(l<r))
@@ -512,7 +511,7 @@ local function process_grp_op(op, group)
         for _, tup in ipairs(group.groups) do
             local key = tup[1]
             local grp = tup[2]
-            table.insert(newGrps, {key, process_grp_op(op, grp)})
+            table.insert(newGrps, { key, process_grp_op(op, grp) })
         end
         return { groups = newGrps }
     elseif group.items and op.split then
@@ -536,7 +535,7 @@ local function process_grp_op(op, group)
             -- pack for sorting
             local zipped = {}
             for _, itm in ipairs(group.items) do
-                table.insert(zipped, {itm[op.field], itm})
+                table.insert(zipped, { itm[op.field], itm })
             end
             -- do sort
             zipped = sort_grp(op.field, zipped, op.sort == 'des')
@@ -555,6 +554,13 @@ end
 ---@return string[]
 local function process_query(query)
     -- do set ops
+    for _, op in ipairs(query.setOps) do
+        for jdx, dir in ipairs(op.fromDirs) do
+            if dir == '-' then
+                op.fromDirs[jdx] = M.options.dirs.data
+            end
+        end
+    end
     local resultSet = do_query_set_ops(query.setOps)
 
     return T.matchOption(resultSet, function(x)
@@ -583,10 +589,10 @@ local function process_query(query)
                         table.insert(lines, preLine .. itm:render()['str'])
                     end
                 elseif grp.groups then
-                    local preHdr = '###' .. string.rep('#',level) .. ' '
+                    local preHdr = '###' .. string.rep('#', level) .. ' '
                     for _, grpTuple in pairs(grp.groups) do
                         table.insert(lines, preHdr .. grpTuple[1])
-                        for _, subline in ipairs(disp_grps(level+1, grpTuple[2])) do
+                        for _, subline in ipairs(disp_grps(level + 1, grpTuple[2])) do
                             table.insert(lines, subline)
                         end
                     end
@@ -601,7 +607,7 @@ local function process_query(query)
         end
     end, function()
         return { 'Failed parse: either no set operations were specified or the first set operation has no FROM expr' }
-end)
+    end)
 end
 
 function M.ask(query)
@@ -610,7 +616,8 @@ function M.ask(query)
     return itm_set
 end
 
-function M.quick_get_names(stache_type)
+function M.quick_get_names(stache_type, searchDir)
+    searchDir = searchDir or M.options.dirs.data
     local res = run_stache(stache_type)
     return res.stdout
 end
@@ -619,7 +626,7 @@ function M.open_item()
     local line_text = vim.api.nvim_get_current_line()
     local task_id = string.match(line_text, '%((.-)%)') or string.match(line_text, 'id: *([%w%-%_]+)')
     if task_id then
-        local file = hdirs.stache.abs .. '/' .. task_id
+        local file = M.options.dirs.data .. '/' .. task_id
         vim.cmd('edit ' .. file)
     else
         vim.notify('No stache item on current line!')
@@ -684,7 +691,7 @@ local function run_block(blockLines)
     end
     local resLines = { '```markdown' }
     local blkString = table.concat(withoutComments, '\n')
-    local processedLines = T.matchOption(pBlk.runParser(blkString),
+    local processedLines = T.matchOption(P.pBlock.runParser(blkString),
         function(res)
             local query = res[2]
             return process_query(query)
@@ -712,10 +719,9 @@ function M.buf_exec_all_blocks(bufnr)
     return blks
 end
 
-function M.setup(c)
-    vim.notify('in setup')
-    M.dirs = c.dirs
-    assert(M.dirs.data)
+function M.setup(opts)
+    M.options.dirs = opts.dirs
+    assert(M.options.dirs and M.options.dirs.data)
     StacheCache = T.Map:new()
 end
 
