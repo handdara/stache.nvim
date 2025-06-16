@@ -4,7 +4,11 @@ local C = require 'stache.config'
 local I = require 'stache.items'
 local ask = require 'stache.ask'
 
-local M = { options = { dirs = { data = vim.fs.normalize('~/Documents/stache') } } }
+local M = {
+    options = {
+        dirs = {},
+    }
+}
 
 C.extend_defaults(M)
 
@@ -390,9 +394,12 @@ function M.buf_exec_all_blocks(bufnr)
 end
 
 function M.setup(opts)
+    assert(opts)
+    assert(opts.dirs)
+    assert(opts.dirs.data)
     M.options.dirs = opts.dirs
-    assert(M.options.dirs and M.options.dirs.data)
     StacheCache = T.Map:new()
+    C.create_augroups(M)
 end
 
 return M

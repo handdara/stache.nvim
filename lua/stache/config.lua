@@ -113,5 +113,15 @@ return {
                 'office',
             },
         }
+    end,
+    create_augroups = function(M)
+        local stache_enter = vim.api.nvim_create_augroup('StacheEnter', { clear = true })
+        vim.api.nvim_create_autocmd({ 'BufRead', 'BufNewFile' }, {
+            callback = function()
+                vim.bo.filetype = "yaml"
+            end,
+            group = stache_enter,
+            pattern = M.options.dirs.data .. '/*',
+        })
     end
 }
