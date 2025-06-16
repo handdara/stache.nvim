@@ -416,6 +416,18 @@ function M.refresh_cache()
     StacheCache:map(function(item) item:refresh() end) ---@diagnostic disable-line: missing-return, undefined-field
 end
 
+function M.new_item()
+    vim.cmd( 'e ' .. M.options.dirs.data .. '/newstacheitem' )
+    local cr = string.char(13)
+    local esc = string.char(27)
+    vim.cmd([[let @r = "{/^id:]]..cr..[[W\"zyiW ovE\"zpsy]]..esc..esc..esc..'"')
+    vim.defer_fn(function()
+        local keys = vim.api.nvim_replace_termcodes("Istache", true, false, true)
+        vim.api.nvim_feedkeys(keys, 'n', false)
+    end, 25)
+    vim.notify('Run the "r" mactro when done! (press `@r`)')
+end
+
 function M.setup(opts)
     assert(opts)
     assert(opts.dirs)
