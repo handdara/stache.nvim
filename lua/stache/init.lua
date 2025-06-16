@@ -393,6 +393,11 @@ function M.buf_exec_all_blocks(bufnr)
     return blks
 end
 
+function M.refresh_cache()
+    assert(StacheCache and StacheCache._elements)
+    StacheCache:map(function(item) item:refresh() end) ---@diagnostic disable-line: missing-return, undefined-field
+end
+
 function M.setup(opts)
     assert(opts)
     assert(opts.dirs)
