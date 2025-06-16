@@ -336,9 +336,9 @@ local function buf_get_blocks(bufnr)
                 table.insert(curr, idx)
             end
         elseif table.maxn(curr) == 1 then
-            if string.match(line, "^```stache%s*$") then
+            if string.match(line, "^```stache%s*") then
                 curr[1] = idx - 1
-            elseif string.match(line, "^```%s*$") then
+            elseif string.match(line, "^```%s*") then
                 table.insert(curr, idx - 1)
                 local newBlk = {
                     range = curr,
@@ -391,6 +391,23 @@ function M.buf_exec_all_blocks(bufnr)
         blkShft = blkShft + #res - blk.outReplaceRange[2] + blk.outReplaceRange[1]
     end
     return blks
+end
+
+function M.buf_exec_curr_block(bufnr)
+    bufnr = bufnr or 0
+    local blks = buf_get_blocks(bufnr)
+    local blkShft = 0
+    local currLine = vim.api.nvim_win_get_cursor(0)[1]
+    for _, blk in ipairs(blks) do
+        if blk.range[1] - 1 <= currLine and currLine <= blk.range[2] + 1 then
+            local res = run_block(blk.lines)
+            blk.output = res
+            vim.api.nvim_buf_set_lines(bufnr, blkShft + blk.outReplaceRange[1], blkShft + blk.outReplaceRange[2], false, res)
+            blkShft = blkShft + #res - blk.outReplaceRange[2] + blk.outReplaceRange[1]
+            return blk
+        end
+    end
+    vim.notify('StacheRun failed: Not inside of a block', vim.log.levels.WARN)
 end
 
 function M.refresh_cache()
