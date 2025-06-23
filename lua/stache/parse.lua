@@ -255,6 +255,19 @@ local pBlk = (
     return { setOps = x[1], grpOps = x[2], dispOp = x[3] }
 end)
 
+local function testing()
+    local function tr(x)
+        print(vim.inspect(x))
+        return x
+    end
+    local ts1 = 'AFTER due 2025-01-01'
+    local ts2 = 'BEFORE due 2025-01-01'
+    local p = pFiltDateField
+    local res = tr( p.runParser(ts1) )
+    local res = tr( p.runParser(ts2) )
+end
+testing()
+
 M.pBlock = pBlk
 M.pDate = pDate
 

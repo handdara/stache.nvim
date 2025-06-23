@@ -19,6 +19,25 @@ local function run_stache(data, dir)
     return ask.ask_rg { '-l', pattern, dir }
 end
 
+local function compare_dates(lhs, rhs)
+    local pNullOrDate = (M.pstr('null') + M.ppure({ yr = 9999, mo = 12, da = 31 })) ^ P.pDate
+    return T.matchOption(pNullOrDate.runParser(lhs),
+        function(lres)
+            local l = lres[2][1]
+            return T.matchOption(pNullOrDate.runParser(rhs),
+                function(rres)
+                    local r = rres[2][1]
+                    ---@cast l {yr:number, mo:number, da:number}
+                    ---@cast r {yr:number, mo:number, da:number}
+                    local yrEq = l.yr == r.yr
+                    local yrMoEq = yrEq and l.mo == r.mo
+                    return l.yr < r.yr or (yrEq and l.mo < r.mo) or (yrMoEq and l.da < r.da)
+                end,
+                function() error('date comparison failed') end)
+        end,
+        function() error('lhs date comparison failed, lhs: ' .. vim.inspect(lhs)) end)
+end
+
 ---@param ops SetOp[]
 ---@return Option<Set<StacheID>>
 local function do_query_set_ops(ops)
@@ -54,6 +73,19 @@ local function do_query_set_ops(ops)
                     assert(askRes.stderr[1] == "", 'ask_rg result: ' .. vim.inspect(askRes))
                     nextset = I.mk_itm_set(askRes.stdout)
                 elseif op.filter.filt == 'field' then
+                    cmd[1] = '--files-with-matches'
+                    table.insert(cmd, 2, '')
+                    local askRes = ask.ask_rg(cmd)
+                    assert(askRes.stderr[1] == "")
+                    nextset = I.mk_itm_set(askRes.stdout):filter(function(sid)
+                        local matched = string.match(StacheCache[sid][op.filter.field], op.filter.data)
+                        if op.filter.invert then
+                            return not matched
+                        else
+                            return matched
+                        end
+                    end)
+                elseif op.filter.filt == "after" then
                     cmd[1] = '--files-with-matches'
                     table.insert(cmd, 2, '')
                     local askRes = ask.ask_rg(cmd)
@@ -114,25 +146,6 @@ local function do_query_set_ops(ops)
         end
         return T.Some(currset)
     end
-end
-
-local function compare_dates(lhs, rhs)
-    local pNullOrDate = (M.pstr('null') + M.ppure({ yr = 9999, mo = 12, da = 31 })) ^ P.pDate
-    return T.matchOption(pNullOrDate.runParser(lhs),
-        function(lres)
-            local l = lres[2][1]
-            return T.matchOption(pNullOrDate.runParser(rhs),
-                function(rres)
-                    local r = rres[2][1]
-                    ---@cast l {yr:number, mo:number, da:number}
-                    ---@cast r {yr:number, mo:number, da:number}
-                    local yrEq = l.yr == r.yr
-                    local yrMoEq = yrEq and l.mo == r.mo
-                    return l.yr < r.yr or (yrEq and l.mo < r.mo) or (yrMoEq and l.da < r.da)
-                end,
-                function() error('date comparison failed') end)
-        end,
-        function() error('lhs date comparison failed, lhs: ' .. vim.inspect(lhs)) end)
 end
 
 ---@param field StacheField
