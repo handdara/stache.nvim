@@ -301,7 +301,14 @@ function M.open_item()
     local line_text = vim.api.nvim_get_current_line()
     local task_id = string.match(line_text, '%((.-)%)') or string.match(line_text, 'id: *([%w%-%_]+)')
     if task_id then
-        local file = M.options.dirs.data .. '/' .. task_id
+        local itm = StacheCache[task_id]
+        local file
+        if itm then
+            ---@cast itm ItmDat
+            file = itm.path
+        else
+            file = M.options.dirs.data .. '/' .. task_id
+        end
         vim.cmd('edit ' .. file)
     else
         vim.notify('No stache item on current line!')

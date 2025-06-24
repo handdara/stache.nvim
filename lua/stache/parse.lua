@@ -188,7 +188,7 @@ end))
     ^ (pYear - M.pstr('-') .. pMo - M.pstr('-') .. pDay):fmap(compose(wrap1, function(x)
     return {yr = x[1], mo = x[2], da = x[3]}
 end))
-local pPath = M.pmatch('^[%w%-%_%/]+()')
+local pPath = M.pmatch('^[%w%-%_%/%~%.]+()'):fmap(wrapmap(vim.fs.normalize))
 local pSetOpKW = mkSetOpP('UNION') ^ mkSetOpP('SUBTRACT') ^ mkSetOpP('INTERSECT')
 local pWhChar = M.pstr(' ') ^ M.pstr('\t')
 local pWhite = M.prep(pWhChar)

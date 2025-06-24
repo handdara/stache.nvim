@@ -121,7 +121,7 @@ return {
                 vim.bo.filetype = "yaml"
             end,
             group = stache_enter,
-            pattern = M.options.dirs.data .. '/*',
+            pattern = {M.options.dirs.data .. '/*', '*/stache/*'},
         })
         local stache_itmSaved = vim.api.nvim_create_augroup('StacheItmSaved', { clear = true })
         vim.api.nvim_create_autocmd({ 'BufWritePost' }, {
