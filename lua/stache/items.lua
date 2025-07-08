@@ -21,6 +21,7 @@ end
 ---@class ItmDat
 ---@field refresh fun(self:ItmDat)
 ---@field render fun(self:ItmDat):string[]
+---@field path string
 ---@operator concat(ItmDat):ItmDat
 
 local meta_itmdat = {
