@@ -214,7 +214,12 @@ local pFiltField = (M.pstr('FIELD') + pWhSep + pField .. pWhSep + pDblQuotes)
     :fmap(function(x)
         return { { filt = 'field', field = x[1], data = x[2] } }
     end)
-local pFilters = pFiltStache ^ pFiltGrep ^ pFiltField
+local pBefAft = M.pstr('BEFORE') ^ M.pstr('AFTER')
+local pFiltDateField = (pBefAft .. (pWhSep + pField - pWhSep) .. pDate)
+    :fmap(function(x)
+        return { { filt = string.lower(x[1]), field = x[2], data = x[3] } }
+    end)
+local pFilters = pFiltStache ^ pFiltGrep ^ pFiltField ^ pFiltDateField
 local pInv = (M.pstr('INV') + pWhSep + M.ppure(true)) ^ M.ppure(false)
 local pInvFilt = (pInv .. pFilters):fmap(function(x)
     x[2]['invert'] = x[1]

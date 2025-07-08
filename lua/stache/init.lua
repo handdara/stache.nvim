@@ -19,6 +19,33 @@ local function run_stache(data, dir)
     return ask.ask_rg { '-l', pattern, dir }
 end
 
+local function compare_dates(lhs, rhs)
+    local pNullOrDate = (P.pstr('null') + P.ppure({ yr = 9999, mo = 12, da = 31 })) ^ P.pDate
+    local function mkDate(x)
+        if type(x) == "string" then
+            return T.matchOption(pNullOrDate.runParser(x),
+                function(y) return T.Some(y[2][1]) end, T.None)
+        elseif x.yr and x.mo and x.da then
+            return T.Some(x)
+        else
+            return T.None()
+        end
+    end
+    return T.matchOption(mkDate(lhs),
+        function(l)
+            return T.matchOption(mkDate(rhs),
+                function(r)
+                    ---@cast l {yr:number, mo:number, da:number}
+                    ---@cast r {yr:number, mo:number, da:number}
+                    local yrEq = l.yr == r.yr
+                    local yrMoEq = yrEq and l.mo == r.mo
+                    return l.yr < r.yr or (yrEq and l.mo < r.mo) or (yrMoEq and l.da < r.da)
+                end,
+                function() error('rhs date comparison failed, rhs: ' .. vim.inspect(rhs)) end)
+        end,
+        function() error('lhs date comparison failed, lhs: ' .. vim.inspect(lhs)) end)
+end
+
 ---@param ops SetOp[]
 ---@return Option<Set<StacheID>>
 local function do_query_set_ops(ops)
@@ -66,6 +93,29 @@ local function do_query_set_ops(ops)
                             return matched
                         end
                     end)
+                elseif op.filter.filt == "after" or op.filter.filt == "before" then
+                    cmd[1] = '--files-with-matches'
+                    table.insert(cmd, 2, '')
+                    local askRes = ask.ask_rg(cmd)
+                    assert(askRes.stderr[1] == "")
+                    nextset = I.mk_itm_set(askRes.stdout):filter(function(sid)
+                        local lhs = op.filter.data
+                        local rhs = StacheCache[sid][op.filter.field]
+                        local isLessThan
+                        if rhs ~= "null" then
+                            isLessThan = compare_dates(lhs, rhs)
+                            local needsToComeBefore =
+                            (op.filter.filt == "before" and not op.filter.invert)
+                            or (op.filter.filt == "after" and op.filter.invert)
+                            if needsToComeBefore then
+                                return not isLessThan
+                            else
+                                return isLessThan
+                            end
+                        else
+                            return true
+                        end
+                    end)
                 else
                     error('not impl')
                 end
@@ -99,6 +149,22 @@ local function do_query_set_ops(ops)
                                 return matched
                             end
                         end)
+                    elseif op.filter.filt == "after" or op.filter.filt == "before" then
+                        local askRes = ask.ask_rg { '-l', '^due: ', dir } -- leave this as just the -l arg because inversion happens later
+                        assert(askRes.stderr[1] == "")
+                        nextset = I.mk_itm_set(askRes.stdout):filter(function(sid)
+                            local lhs = op.filter.data
+                            local rhs = StacheCache[sid][op.filter.field]
+                            local isLessThan = compare_dates(lhs, rhs)
+                            local needsToComeBefore =
+                                (op.filter.filt == "before" and not op.filter.invert)
+                                or (op.filter.filt == "after" and op.filter.invert)
+                            if needsToComeBefore then
+                                return not isLessThan
+                            else
+                                return isLessThan
+                            end
+                        end)
                     else
                         error('not impl: op = ' .. vim.inspect(op))
                     end
@@ -114,25 +180,6 @@ local function do_query_set_ops(ops)
         end
         return T.Some(currset)
     end
-end
-
-local function compare_dates(lhs, rhs)
-    local pNullOrDate = (M.pstr('null') + M.ppure({ yr = 9999, mo = 12, da = 31 })) ^ P.pDate
-    return T.matchOption(pNullOrDate.runParser(lhs),
-        function(lres)
-            local l = lres[2][1]
-            return T.matchOption(pNullOrDate.runParser(rhs),
-                function(rres)
-                    local r = rres[2][1]
-                    ---@cast l {yr:number, mo:number, da:number}
-                    ---@cast r {yr:number, mo:number, da:number}
-                    local yrEq = l.yr == r.yr
-                    local yrMoEq = yrEq and l.mo == r.mo
-                    return l.yr < r.yr or (yrEq and l.mo < r.mo) or (yrMoEq and l.da < r.da)
-                end,
-                function() error('date comparison failed') end)
-        end,
-        function() error('lhs date comparison failed, lhs: ' .. vim.inspect(lhs)) end)
 end
 
 ---@param field StacheField
@@ -410,7 +457,8 @@ function M.buf_exec_curr_block(bufnr, atLine)
         if blk.range[1] - 1 <= atLine and atLine <= blk.range[2] + 2 then
             local res = run_block(blk.lines)
             blk.output = res
-            vim.api.nvim_buf_set_lines(bufnr, blkShft + blk.outReplaceRange[1], blkShft + blk.outReplaceRange[2], false, res)
+            vim.api.nvim_buf_set_lines(bufnr, blkShft + blk.outReplaceRange[1], blkShft + blk.outReplaceRange[2], false,
+                res)
             blkShft = blkShft + #res - blk.outReplaceRange[2] + blk.outReplaceRange[1]
             return blk
         end
@@ -424,10 +472,10 @@ function M.refresh_cache()
 end
 
 function M.new_item()
-    vim.cmd( 'e ' .. M.options.dirs.data .. '/newstacheitem' )
+    vim.cmd('e ' .. M.options.dirs.data .. '/newstacheitem')
     local cr = string.char(13)
     local esc = string.char(27)
-    vim.cmd([[let @r = "{/^id:]]..cr..[[W\"zyiW ovE\"zpsy]]..esc..esc..esc..'"')
+    vim.cmd([[let @r = "{/^id:]] .. cr .. [[W\"zyiW ovE\"zpsy]] .. esc .. esc .. esc .. '"')
     vim.defer_fn(function()
         local keys = vim.api.nvim_replace_termcodes("Istache", true, false, true)
         vim.api.nvim_feedkeys(keys, 'n', false)
