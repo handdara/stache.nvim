@@ -115,7 +115,7 @@ return {
         }
     end,
     create_augroups = function(M)
-        local stachePattern = {M.options.dirs.data .. '/*', '*/stache/*'}
+        local stachePattern = {M.options.dirs.data .. '/*', '*/%d+-stache/*'}
         local stache_enter = vim.api.nvim_create_augroup('StacheEnter', { clear = true })
         vim.api.nvim_create_autocmd({ 'BufRead', 'BufNewFile' }, {
             callback = function()
